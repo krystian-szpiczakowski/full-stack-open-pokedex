@@ -5,6 +5,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize]
+env:
+  SKIP_DEPLOYMENT: ${{ contains(join(github.event.commits.*.message, ' '), 'skip') }}
 jobs:
   simple_deployment_pipeline:
     runs-on: ubuntu-latest
@@ -13,10 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: 
-        run: echo "Siema ziom"
-      - name: Install dependencies
-        run: npm install
       - name: Install CI dependencies
         run: npm ci
       - name: Check style
@@ -28,23 +26,24 @@ jobs:
       - name: Run Playwright tests
         run: npx playwright test
       - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
       - name: Trigger deployment
-        if: ${{github.event_name == 'push'}}
+        if: ${{ !env.SKIP_DEPLOYMENT && github.event_name == 'push' }}
         run: curl https://api.render.com/deploy/srv-${{ secrets.RENDER_SERVICE_ID }}?key=${{ secrets.RENDER_API_KEY }}
   tag_release:
-    if: ${{github.event_name == 'push'}}
     needs: [simple_deployment_pipeline]
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: '0'
+      - run: echo "Skip deployment ${{env.SKIP_DEPLOYMENT}}"
       - name: Bump version and push tag
+        if: ${{ !env.SKIP_DEPLOYMENT }}
         uses: anothrNick/github-tag-action@1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
